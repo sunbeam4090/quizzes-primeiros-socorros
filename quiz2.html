@@ -1,0 +1,416 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desafio do Dia dos Enfermeiros: Missão de Emergência</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .quiz-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            transition: transform 0.3s ease;
+        }
+        .quiz-container:hover {
+            transform: scale(1.02);
+        }
+        h1 {
+            color: #d32f2f;
+            font-size: 24px;
+        }
+        p {
+            color: #333;
+        }
+        .progress-container {
+            margin: 10px 0;
+            text-align: left;
+        }
+        .progress-text {
+            font-size: 14px;
+            color: #1976d2;
+            margin-bottom: 5px;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            height: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #1976d2;
+            transition: width 0.5s ease;
+        }
+        .difficulty {
+            font-size: 14px;
+            color: #d32f2f;
+            margin: 10px 0;
+        }
+        .question-container {
+            opacity: 1;
+            transition: opacity 0.5s ease;
+        }
+        .question-container.fade-out {
+            opacity: 0;
+        }
+        .question-container.fade-in {
+            opacity: 1;
+        }
+        .option {
+            background-color: #e3f2fd;
+            padding: 12px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.2s ease;
+        }
+        .option:hover {
+            background-color: #bbdefb;
+        }
+        .feedback {
+            margin: 10px 0;
+            font-weight: bold;
+            transition: opacity 0.5s ease;
+        }
+        .correct { color: green; }
+        .incorrect { color: red; }
+        .next-btn {
+            background-color: #1976d2;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.2s ease;
+        }
+        .next-btn:hover {
+            background-color: #1565c0;
+        }
+        .next-quiz {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #d32f2f;
+        }
+        .ranking {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1976d2;
+            margin-top: 10px;
+        }
+        .nurse-message {
+            font-size: 16px;
+            color: #333;
+            font-style: italic;
+            margin-top: 10px;
+        }
+        .global-progress {
+            font-size: 14px;
+            color: #1976d2;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-container">
+        <h1>Desafio do Dia dos Enfermeiros: Missão de Emergência 🩺</h1>
+        <div class="global-progress" id="globalProgress"></div>
+        <p>Você está sendo convocado para uma situação real. Teste seus reflexos e conhecimentos em primeiros socorros!</p>
+        <div class="progress-container">
+            <div class="progress-text" id="progressText"></div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+        <div class="difficulty" id="difficulty"></div>
+        <div class="question-container" id="questionContainer">
+            <div id="question"></div>
+            <div id="options"></div>
+            <div id="feedback" class="feedback"></div>
+        </div>
+        <button id="nextBtn" class="next-btn" style="display: none;">Próxima Pergunta</button>
+        <div id="score" style="display: none;"></div>
+        <div id="ranking" class="ranking" style="display: none;"></div>
+        <div id="nextQuiz" class="next-quiz" style="display: none;"></div>
+    </div>
+
+    <script>
+        const quizData = {
+            nurseMessage: "Na rotina cansativa, lembre-se: seu trabalho é a diferença entre o desespero e o alívio de alguém.",
+            quizId: 2
+        };
+
+        const questions = [
+            {
+                question: "O que são primeiros socorros?",
+                options: [
+                    "Cirurgias de emergência",
+                    "Cuidados imediatos para salvar vidas",
+                    "Exames médicos completos",
+                    "Tratamentos de longo prazo"
+                ],
+                correct: 1,
+                explanation: "Primeiros socorros são ações iniciais para preservar a vida até ajuda profissional chegar.",
+                difficulty: "Fácil",
+                points: 1
+            },
+            {
+                question: "Como reconhecer os sinais de uma fratura?",
+                options: [
+                    "Dor intensa, deformidade, inchaço",
+                    "Febre alta e tosse",
+                    "Sangramento nasal",
+                    "Falta de ar súbita"
+                ],
+                correct: 0,
+                explanation: "Sinais de fratura incluem dor, deformidade visível e inchaço.",
+                difficulty: "Médio",
+                points: 2
+            },
+            {
+                question: "Como identificar e tratar um caso de desengasgo?",
+                options: [
+                    "Dar água para a vítima",
+                    "Realizar a manobra de Heimlich",
+                    "Bater no peito com força",
+                    "Esperar a vítima tossir"
+                ],
+                correct: 1,
+                explanation: "A manobra de Heimlich desobstrui as vias aéreas.",
+                difficulty: "Médio",
+                points: 2
+            },
+            {
+                question: "Quando buscar ajuda médica para fraturas?",
+                options: [
+                    "Apenas se a vítima sentir dor leve",
+                    "Em caso de fratura exposta ou deformidade grave",
+                    "Se a vítima conseguir andar",
+                    "Sempre esperar 24 horas"
+                ],
+                correct: 1,
+                explanation: "Fraturas expostas ou graves requerem ajuda médica imediata.",
+                difficulty: "Difícil",
+                points: 3
+            },
+            {
+                question: "O que deve ser feito em caso de picada de cobra?",
+                options: [
+                    "Cortar a área para sugar o veneno",
+                    "Manter a vítima calma, imobilizar e buscar ajuda",
+                    "Aplicar gelo no local",
+                    "Dar analgésicos à vítima"
+                ],
+                correct: 1,
+                explanation: "Manter calma e imobilizar reduz a disseminação do veneno.",
+                difficulty: "Difícil",
+                points: 3
+            }
+        ];
+
+        let currentQuestion = 0;
+        let score = 0;
+
+        const questionEl = document.getElementById('question');
+        const optionsEl = document.getElementById('options');
+        const feedbackEl = document.getElementById('feedback');
+        const nextBtn = document.getElementById('nextBtn');
+        const scoreEl = document.getElementById('score');
+        const progressTextEl = document.getElementById('progressText');
+        const progressFillEl = document.getElementById('progressFill');
+        const difficultyEl = document.getElementById('difficulty');
+        const rankingEl = document.getElementById('ranking');
+        const nextQuizEl = document.getElementById('nextQuiz');
+        const questionContainer = document.getElementById('questionContainer');
+        const globalProgressEl = document.getElementById('globalProgress');
+
+        // Funções para gerenciar pontos globais
+        function getGlobalProgress() {
+            const totalPoints = parseInt(localStorage.getItem('totalPoints') || '0');
+            const completedQuizzes = parseInt(localStorage.getItem('completedQuizzes') || '0');
+            const quizIds = JSON.parse(localStorage.getItem('quizIds') || '[]');
+            return { totalPoints, completedQuizzes, quizIds };
+        }
+
+        function saveGlobalProgress(points, quizId) {
+            let { totalPoints, completedQuizzes, quizIds } = getGlobalProgress();
+            if (!quizIds.includes(quizId)) {
+                totalPoints += points;
+                completedQuizzes += 1;
+                quizIds.push(quizId);
+                localStorage.setItem('totalPoints', totalPoints);
+                localStorage.setItem('completedQuizzes', completedQuizzes);
+                localStorage.setItem('quizIds', JSON.stringify(quizIds));
+            }
+        }
+
+        function displayGlobalProgress() {
+            const { totalPoints, completedQuizzes } = getGlobalProgress();
+            globalProgressEl.textContent = `Progresso global: ${totalPoints} pontos, ${completedQuizzes} níveis completados`;
+        }
+
+        function loadQuestion() {
+            displayGlobalProgress();
+            if (currentQuestion >= questions.length) {
+                showScore();
+                return;
+            }
+            questionContainer.classList.add('fade-out');
+            setTimeout(() => {
+                const q = questions[currentQuestion];
+                questionEl.textContent = q.question;
+                progressTextEl.textContent = `Pergunta ${currentQuestion + 1} de ${questions.length}`;
+                progressFillEl.style.width = `${((currentQuestion + 1) / questions.length) * 100}%`;
+                difficultyEl.textContent = `Nível: ${q.difficulty}`;
+                optionsEl.innerHTML = '';
+                q.options.forEach((option, index) => {
+                    const btn = document.createElement('div');
+                    btn.classList.add('option');
+                    btn.textContent = option;
+                    btn.addEventListener('click', () => checkAnswer(index));
+                    optionsEl.appendChild(btn);
+                });
+                feedbackEl.textContent = '';
+                nextBtn.style.display = 'none';
+                nextQuizEl.style.display = 'none';
+                rankingEl.style.display = 'none';
+                questionContainer.classList.remove('fade-out');
+                questionContainer.classList.add('fade-in');
+                setTimeout(() => {
+                    questionContainer.classList.remove('fade-in');
+                }, 500);
+            }, 500);
+        }
+
+        function checkAnswer(index) {
+            const q = questions[currentQuestion];
+            if (index === q.correct) {
+                score += q.points;
+                feedbackEl.textContent = `Correto! ${q.explanation} Você é um verdadeiro enfermeiro em ação!`;
+                feedbackEl.classList.add('correct');
+            } else {
+                feedbackEl.textContent = `Incorreto. ${q.explanation} Continue treinando, herói!`;
+                feedbackEl.classList.add('incorrect');
+            }
+            const options = optionsEl.getElementsByClassName('option');
+            for (let option of options) {
+                option.style.pointerEvents = 'none';
+            }
+            nextBtn.style.display = 'block';
+        }
+
+        function showScore() {
+            saveGlobalProgress(score, quizData.quizId);
+            questionContainer.classList.add('fade-out');
+            setTimeout(() => {
+                questionEl.textContent = 'Missão Concluída!';
+                optionsEl.innerHTML = '';
+                feedbackEl.innerHTML = `<div class="nurse-message">${quizData.nurseMessage}</div>`;
+                progressTextEl.textContent = '';
+                progressFillEl.style.width = '100%';
+                difficultyEl.textContent = '';
+                scoreEl.textContent = `Pontuação neste quiz: ${score} de 11 pontos`;
+                scoreEl.style.display = 'block';
+                let rank = '';
+                if (score <= 4) {
+                    rank = 'Aprendiz de Enfermagem 🩺';
+                } else if (score <= 8) {
+                    rank = 'Socorrista em Treinamento 🚑';
+                } else {
+                    rank = 'Herói dos Primeiros Socorros 🏥';
+                }
+                rankingEl.textContent = `Seu ranking: ${rank}`;
+                rankingEl.style.display = 'block';
+                const { totalPoints, completedQuizzes } = getGlobalProgress();
+                if (score >= 9) {
+                    rankingEl.textContent += ` Parabéns! Você completou este nível com maestria! Total: ${totalPoints} pontos, ${completedQuizzes} níveis. Anote seu nome para concorrer a brindes!`;
+                } else {
+                    rankingEl.textContent += ` Total: ${totalPoints} pontos, ${completedQuizzes} níveis. Continue para alcançar mais brindes!`;
+                }
+                nextBtn.textContent = 'Reiniciar';
+                nextBtn.onclick = restart;
+                nextQuizEl.textContent = 'Escaneie outro QR code e veja até que nível chegará!';
+                nextQuizEl.style.display = 'block';
+                questionContainer.classList.remove('fade-out');
+                questionContainer.classList.add('fade-in');
+                setTimeout(() => {
+                    questionContainer.classList.remove('fade-in');
+                }, 500);
+            }, 500);
+        }
+
+        nextBtn.addEventListener('click', () => {
+            currentQuestion++;
+            loadQuestion();
+        });
+
+        function restart() {
+            currentQuestion = 0;
+            score = 0;
+            scoreEl.style.display = 'none';
+            rankingEl.style.display = 'none';
+            nextBtn.textContent = 'Próxima Pergunta';
+            nextBtn.onclick = () => {
+                currentQuestion++;
+                loadQuestion();
+            };
+            loadQuestion();
+        }
+
+        loadQuestion();
+    </script>
+</body>
+</html>
